@@ -1,175 +1,142 @@
-const request = require('supertest');
-const app = require('./app');
+import { test, describe, before, after, beforeEach } from 'node:test';
+import assert from 'node:assert/strict';
+import http, { createServer } from 'node:http';
+import app from './app.js';
 
-const createUser = (app, index) => {
-    return request(app)
-      .post('/users')
-      .send({
-          name: 'John',
-          email: `john.doe${index}@example.com`
-      });
-}
+let server;
+const PORT = 3001;
 
-describe('E1 - Create users', () => {
-    it('should create a user', async () => {
-        const res = await request(app)
-          .post('/users')
-          .send({
-              name: 'John',
-              email: 'john@test.com',
-          });
+// Function to query graphql
+const queryGraphql = (data = null) => {
+    return new Promise((resolve, reject) => {
+        const postData = JSON.stringify(data);
+        const options = {
+            method: 'POST',
+            hostname: 'localhost',
+            port: PORT,
+            path: '/graphql',
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(postData),
+            },
+        };
 
-        expect(res.statusCode).toEqual(200);
-        expect(res.body).toHaveProperty('id');
-        expect(res.body).toHaveProperty('name');
-        expect(res.body).toHaveProperty('email');
+        const req = http.request(options, (res) => {
+            let body = '';
+            res.on('data', (chunk) => {
+                body += chunk;
+            });
+            res.on('end', () => {
+                console.log('test:request:debug', body);
+                res.body = JSON.parse(body || '{}');
+                
+                resolve(res);
+            });
+        });
+
+        req.on('error', reject);
+
+        if (data) {
+            req.write(JSON.stringify(data));
+        }
+
+        req.end();
     });
+};
 
-    it('should not create a user without name', async () => {
-        const res = await request(app)
-          .post('/users')
-          .send({
-              email: 'test@test.com',
-          });
+server = createServer(app);
 
-        expect(res.statusCode).toEqual(400);
-        expect(res.body).toHaveProperty('error');
-    });
-
-    it('should not create a user without email', async () => {
-        const res = await request(app)
-          .post('/users')
-          .send({
-              name: 'John',
-          });
-
-        expect(res.statusCode).toEqual(400);
-        expect(res.body).toHaveProperty('error');
-    });
-
-    it('should not create a user without name and email', async () => {
-        const res = await request(app)
-          .post('/users')
-          .send({});
-
-        expect(res.statusCode).toEqual(400);
-        expect(res.body).toHaveProperty('error');
-    });
-
-    it('should not create a user with an existing email', async () => {
-        const res = await request(app)
-          .post('/users')
-          .send({
-              name: 'John',
-              email: 'john@test.com',
-          });
-
-        expect(res.statusCode).toEqual(400);
-        expect(res.body).toHaveProperty('error');
-    });
+// Start the server before tests, and stop it after
+before(() => {
+    server.listen(PORT); // Start the server before tests
 });
 
-describe('E2 - Update users', () => {
-    it('should update a user', async () => {
-        await createUser(app, 0);
-
-        const res = await request(app)
-          .put('/users/0')
-          .send({
-              name: 'John',
-              email: 'john.doe@example.com',
-          });
-
-        expect(res.statusCode).toEqual(200);
-        expect(res.body).toHaveProperty('id');
-        expect(res.body).toHaveProperty('name');
-        expect(res.body).toHaveProperty('email');
-    });
-
-    it('should not update a user without name', async () => {
-        const res = await request(app)
-          .put('/users/0')
-          .send({
-              email: 'john.doe@example.com',
-          });
-
-        expect(res.statusCode).toEqual(400);
-        expect(res.body).toHaveProperty('error');
-    });
-
-    it('should not update a user without email', async () => {
-        const res = await request(app)
-          .put('/users/0')
-          .send({
-              name: 'John',
-          });
-
-        expect(res.statusCode).toEqual(400);
-        expect(res.body).toHaveProperty('error');
-    });
-
-    it('should not update a user without name and email', async () => {
-        const res = await request(app)
-          .put('/users/0')
-          .send({});
-
-        expect(res.statusCode).toEqual(400);
-        expect(res.body).toHaveProperty('error');
-    });
+after(() => {
+    server.close(); // Stop the server after all tests
 });
 
-describe('E3 - List users', () => {
-    it('should list users', async () => {
-        const promises = new Array(20).fill(0).map((_, index) => createUser(app, index));
-        await Promise.all(promises);
+describe('E1 - Find user', () => {
+  test('should find one user', async () => {
+      const res = await queryGraphql({ query: '{ user(id: 1) { id, name } }' });
 
-        const res = await request(app)
-          .get('/users');
-
-        expect(res.statusCode).toEqual(200);
-        expect(res.body).toHaveLength(10);
-    });
-
-    it('should list users with limit', async () => {
-        const res = await request(app)
-          .get('/users?limit=1');
-
-        expect(res.statusCode).toEqual(200);
-        expect(res.body).toHaveLength(1);
-    });
-
-    it('should list users with page', async () => {
-        const res = await request(app)
-          .get('/users?page=1');
-
-        expect(res.statusCode).toEqual(200);
-        expect(res.body).toHaveLength(10);
-    });
-
-    it('should list users with limit and page', async () => {
-        const res = await request(app)
-          .get('/users?limit=1&page=1');
-
-        expect(res.statusCode).toEqual(200);
-        expect(res.body).toHaveLength(1);
-    });
+      assert.strictEqual(res.statusCode, 200);
+      assert.strictEqual(res.body.data.user.name, 'John');
+  });
+  test('should return null for user not found', async () => {
+    const res = await queryGraphql({ query: '{ user(id: 999999) { id, name } }' });
+  
+    assert.strictEqual(res.statusCode, 200);
+    assert.strictEqual(res.body.data.user, null);
+  });
 });
 
-describe('E4 - Delete users', () => {
-    it('should delete a user', async () => {
-        await createUser(app, 0);
+describe('E2 - List users', () => {
+  test('should list all users', async () => {
+      const res = await queryGraphql({ query: '{ users {id, name} }' });
 
-        const res = await request(app)
-          .delete('/users/0');
+      assert.strictEqual(res.statusCode, 200);
+      assert.strictEqual(res.body.data.users.length, 2);
+      assert.strictEqual(res.body.data.users[0].name, 'John');
+      assert.strictEqual(res.body.data.users[1].name, 'Mary');
+  });
+});
 
-        expect(res.statusCode).toEqual(200);
-    });
+describe('E3 - create user', () => {
+  test('should create a new user', async () => {
+      const res = await queryGraphql({ query: `mutation CreateUser { createUser(user: {name: "Example"}) }` });
 
-    it('should not delete a user with invalid id', async () => {
-        const res = await request(app)
-          .delete('/users/999');
+      assert.strictEqual(res.statusCode, 200);
+      console.log('test:body', res.body);
 
-        expect(res.statusCode).toEqual(400);
-        expect(res.body).toHaveProperty('error');
-    });
+      const resList = await queryGraphql({ query: '{ users {id, name} }' });
+      assert.strictEqual(resList.body.data.users.length, 3);
+      assert.strictEqual(resList.body.data.users[2].name, 'Example');
+  });
+});
+
+describe('E4 - update user', () => {
+  test('should update an existing user', async () => {
+      const res = await queryGraphql({ query: `mutation UpdateUser { updateUser(id: 1, user: {name: "Jean"}) {id, name} }` });
+
+      assert.strictEqual(res.statusCode, 200);
+      assert.strictEqual(res.body.data.updateUser.name, 'Jean');
+  });
+
+  test('should not update an non-existing user', async () => {
+    const res = await queryGraphql({ query: `mutation UpdateUser { updateUser(id: 999, user: {name: "Jean"}) {id, name} }` });
+
+    assert.strictEqual(res.statusCode, 200);
+    assert.strictEqual(res.body.data.updateUser, null);
+});
+});
+
+describe('E5 - delete user', () => {
+  test('should delete an existing user', async () => {
+      const res = await queryGraphql({ query: `mutation DeleteUser { deleteUser(id: 1) }` });
+
+      assert.strictEqual(res.statusCode, 200);
+      
+      const resList = await queryGraphql({ query: '{ users {id, name} }' });
+      assert.notStrictEqual(resList.body.data.users[0].name, 'Jean');
+      assert.notStrictEqual(resList.body.data.users[0].name, 'John');
+  });
+
+  test('should not delete an non-existing user', async () => {
+    const res = await queryGraphql({ query: `mutation DeleteUser { deleteUser(id: 9999) }` });
+
+    assert.strictEqual(res.statusCode, 200);
+    assert.strictEqual(res.body.data.deleteUser, null);
+});
+});
+
+
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  process.exit(1);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception thrown:', err);
+  process.exit(1);
 });
