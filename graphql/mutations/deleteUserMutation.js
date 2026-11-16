@@ -1,4 +1,4 @@
-import graphql from 'graphql';
+import * as graphql from 'graphql';
 import {deleteEntity, findEntity} from '../../fakeDb.js';
 
 const deleteUserResolver = (_, args) => {

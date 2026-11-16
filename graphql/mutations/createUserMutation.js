@@ -1,4 +1,4 @@
-import graphql from 'graphql';
+import * as graphql from 'graphql';
 import userInputType from '../types/userInputType.js';
 import {createEntity} from '../../fakeDb.js';
 

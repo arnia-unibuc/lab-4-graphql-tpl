@@ -1,17 +1,15 @@
-import graphql from 'graphql';
+import { GraphQLObjectType } from 'graphql';
 import createUserMutation from '../mutations/createUserMutation.js';
 import updateUserMutation from '../mutations/updateUserMutation.js';
 import deleteUserMutation from '../mutations/deleteUserMutation.js';
 
-// Define the Query type
-const queryType = new graphql.GraphQLObjectType({
-    name: "Mutation",
+const mutationType = new GraphQLObjectType({
+    name: 'Mutation',
     fields: {
         createUser: createUserMutation,
         updateUser: updateUserMutation,
-        deleteUser: deleteUserMutation
-    }
+        deleteUser: deleteUserMutation,
+    },
 });
 
-
-export default queryType;
+export default mutationType;
